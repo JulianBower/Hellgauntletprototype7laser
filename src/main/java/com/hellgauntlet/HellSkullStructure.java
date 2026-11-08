@@ -34,6 +34,7 @@ public class HellSkullStructure extends Structure {
                     Codec.intRange(1, 64).fieldOf("clearance").forGetter(s -> s.clearance)
             ).apply(instance, HellSkullStructure::new));
 
+    private final Structure.StructureSettings baseSettings;
     private final Holder<StructureTemplatePool> startPool;
     private final int size;
     private final int searchMinY;
@@ -43,6 +44,7 @@ public class HellSkullStructure extends Structure {
     public HellSkullStructure(Structure.StructureSettings settings, Holder<StructureTemplatePool> startPool,
                               int size, int searchMinY, int searchMaxY, int clearance) {
         super(settings);
+        this.baseSettings = settings;
         this.startPool = startPool;
         this.size = size;
         this.searchMinY = searchMinY;
@@ -75,7 +77,7 @@ public class HellSkullStructure extends Structure {
             if (!ok) {
                 continue;
             }
-            JigsawStructure jigsaw = new JigsawStructure(this.settings, this.startPool, Optional.empty(), this.size,
+            JigsawStructure jigsaw = new JigsawStructure(this.baseSettings, this.startPool, Optional.empty(), this.size,
                     ConstantHeight.of(VerticalAnchor.absolute(y)), false, Optional.empty(), 80, List.of(),
                     JigsawStructure.DEFAULT_DIMENSION_PADDING, JigsawStructure.DEFAULT_LIQUID_SETTINGS);
             return jigsaw.findGenerationPoint(context);
