@@ -18,7 +18,8 @@ public class VoidOrbEntity extends ThrowableItemProjectile {
     private static final DustParticleOptions RED_SPARK = new DustParticleOptions(new Vector3f(1.0F, 0.0F, 0.0F), 0.4F);
     private static final int MAX_LIFETIME = 200;
 
-    private BlastMode mode = BlastMode.LARGE;
+    private BlastMode mode = BlastMode.NORMAL;
+    private int chargedRadius = 0;
 
     public VoidOrbEntity(EntityType<? extends VoidOrbEntity> type, Level level) {
         super(type, level);
@@ -32,6 +33,11 @@ public class VoidOrbEntity extends ThrowableItemProjectile {
 
     public void setMode(BlastMode mode) {
         this.mode = mode;
+    }
+
+    /** Blast radius of a charged normal orb (0 = only what it touches). */
+    public void setChargedRadius(int radius) {
+        this.chargedRadius = radius;
     }
 
     @Override
@@ -82,7 +88,7 @@ public class VoidOrbEntity extends ThrowableItemProjectile {
         }
 
         Vec3 center = result.getLocation();
-        int radius = this.mode.radius;
+        int radius = this.chargedRadius;
         boolean blocks = this.mode.deleteBlocks;
 
         if (this.mode == BlastMode.ENTITY_ONLY) {

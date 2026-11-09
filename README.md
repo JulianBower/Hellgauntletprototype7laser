@@ -13,7 +13,9 @@ Controls
 - Shift + right click: next mode
 - X: laser mode on/off (rebind in Controls under "Gauntlet of Hell")
 
-Durability per use: orb Small 3, Entity only 5, Medium 5, Large 8; laser 10; continuous laser 10 every 2.5 seconds.
+Durability per use: orb charge 3 to 10 (more the longer you hold), Entity only 5; laser 10; continuous laser 10 every 2.5 seconds.
+
+Normal orb: hold right click to charge (full after 8 seconds, BlastMode.FULL_CHARGE_TICKS), release to fire. Radius grows with the hold time from 0 (only the thing it touches) to 8 (MAX_RADIUS). Mobs that must die instead of being deleted: 150+ max health, or any entity type in the tag data/hellgauntlet/tags/entity_type/kill_not_delete.json (wither and #c:bosses are in it; add modded bosses there). Loot from those kills is protected from the void for 13 seconds.
 
 Continuous laser on something it can't delete (bedrock, portal frames and so on): the beam stays on and its tip
 vibrates in and out with sparks, instead of making a new ball that fades away every few ticks. It still makes one

@@ -1,6 +1,9 @@
 package com.hellgauntlet;
 
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.particles.DustParticleOptions;
+import net.minecraft.server.level.ServerLevel;
+import org.joml.Vector3f;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
@@ -36,6 +39,7 @@ public class GauntletItem extends Item {
     private static final int LASER_COOLDOWN = 40;
     private static final int CONTINUOUS_COOLDOWN = 20;
     private static final float ORB_SPEED = 1.6F;
+    private static final DustParticleOptions CHARGE_SPARK = new DustParticleOptions(new Vector3f(1.0F, 0.05F, 0.0F), 0.6F);
     public static final double LASER_RANGE = 64.0;
 
     public GauntletItem(Properties properties) {
@@ -159,11 +163,17 @@ public class GauntletItem extends Item {
             return InteractionResultHolder.consume(stack);
         }
 
+        if (!isLaser(stack) && getBlastMode(stack) == BlastMode.NORMAL) {
+            // Hold right click to charge, let go to fire (see releaseUsing)
+            player.startUsingItem(hand);
+            return InteractionResultHolder.consume(stack);
+        }
+
         if (!level.isClientSide) {
             if (isLaser(stack)) {
                 fireLaser(level, player, hand, stack, getLaserMode(stack));
             } else {
-                fireOrb(level, player, hand, stack, getBlastMode(stack));
+                fireOrb(level, player, hand, stack, getBlastMode(stack), 0);
             }
         }
 
@@ -177,20 +187,59 @@ public class GauntletItem extends Item {
     }
 
     @Override
-    public void releaseUsing(ItemStack stack, Level level, LivingEntity entity, int timeCharged) {
-        if (entity instanceof Player player) {
+    public void releaseUsing(ItemStack stack, Level level, LivingEntity entity, int timeLeft) {
+        if (!(entity instanceof Player player)) {
+            return;
+        }
+        if (isContinuousLaser(stack)) {
             player.getCooldowns().addCooldown(this, CONTINUOUS_COOLDOWN);
+        } else if (!isLaser(stack) && getBlastMode(stack) == BlastMode.NORMAL) {
+            int charged = getUseDuration(stack, entity) - timeLeft;
+            if (!level.isClientSide) {
+                fireOrb(level, player, player.getUsedItemHand(), stack, BlastMode.NORMAL, charged);
+            }
+            player.getCooldowns().addCooldown(this, ORB_COOLDOWN);
         }
     }
 
-    private void fireOrb(Level level, Player player, InteractionHand hand, ItemStack stack, BlastMode mode) {
+    /** While charging: red sparks gather at the hand, more and more the longer you hold. */
+    @Override
+    public void onUseTick(Level level, LivingEntity entity, ItemStack stack, int remaining) {
+        if (level.isClientSide || !(level instanceof ServerLevel server) || isLaser(stack)
+                || getBlastMode(stack) != BlastMode.NORMAL) {
+            return;
+        }
+        int charged = getUseDuration(stack, entity) - remaining;
+        float f = BlastMode.fraction(charged);
+        Vec3 look = entity.getLookAngle();
+        Vec3 hand = entity.getEyePosition().add(look.scale(0.9)).add(0.0, -0.3, 0.0);
+        int count = 1 + (int) (f * 6.0F);
+        for (int i = 0; i < count; i++) {
+            server.sendParticles(CHARGE_SPARK,
+                    hand.x + (server.random.nextDouble() - 0.5) * (0.3 + 0.5 * f),
+                    hand.y + (server.random.nextDouble() - 0.5) * (0.3 + 0.5 * f),
+                    hand.z + (server.random.nextDouble() - 0.5) * (0.3 + 0.5 * f), 1, 0.0, 0.0, 0.0, 0.0);
+        }
+        // rumble that gets faster as it charges; the last second is a clearly different, higher ping
+        int interval = Math.max(2, 12 - (int) (f * 10.0F));
+        if (charged > 0 && charged % interval == 0) {
+            server.playSound(null, entity.getX(), entity.getY(), entity.getZ(),
+                    SoundEvents.BEACON_AMBIENT, SoundSource.PLAYERS, 0.4F, 0.5F + f);
+        }
+    }
+
+    private void fireOrb(Level level, Player player, InteractionHand hand, ItemStack stack, BlastMode mode, int chargeTicks) {
         VoidOrbEntity orb = new VoidOrbEntity(level, player);
         orb.setMode(mode);
+        if (mode == BlastMode.NORMAL) {
+            orb.setChargedRadius(BlastMode.radiusFor(chargeTicks));
+        }
         orb.shootFromRotation(player, player.getXRot(), player.getYRot(), 0.0F, ORB_SPEED, 0.0F);
         level.addFreshEntity(orb);
         level.playSound(null, player.getX(), player.getY(), player.getZ(),
                 SoundEvents.WITHER_SHOOT, SoundSource.PLAYERS, 0.8F, 0.6F);
-        stack.hurtAndBreak(mode.durabilityCost, player, LivingEntity.getSlotForHand(hand));
+        stack.hurtAndBreak(mode == BlastMode.NORMAL ? BlastMode.costFor(chargeTicks) : mode.durabilityCost,
+                player, LivingEntity.getSlotForHand(hand));
     }
 
     private void fireLaser(Level level, Player player, InteractionHand hand, ItemStack stack, LaserMode mode) {

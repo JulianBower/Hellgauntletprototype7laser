@@ -7,7 +7,12 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.ExperienceOrb;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.boss.EnderDragonPart;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
@@ -34,6 +39,16 @@ public class VoidBlasts {
     /** Mobs with at least this much max health die normally (loot, XP) instead of being deleted. */
     public static final float KILL_HEALTH = 150.0F;
 
+    /** Mobs in this entity type tag (bosses from mods, for example #c:bosses) die normally whatever their health. */
+    private static final TagKey<net.minecraft.world.entity.EntityType<?>> KILL_NOT_DELETE = TagKey.create(
+            Registries.ENTITY_TYPE, ResourceLocation.fromNamespaceAndPath(HellGauntletMod.MODID, "kill_not_delete"));
+    /** Loot dropped near a kill stays safe from the void for this long (the wither's death takes 10 seconds). */
+    private static final int LOOT_PROTECT_TICKS = 260;
+    private static final double LOOT_PROTECT_RANGE = 24.0;
+
+    private record Kill(ServerLevel level, Vec3 pos, long until) {}
+
+    private static final List<Kill> KILLS = new ArrayList<>();
     private static final List<Blast> BLASTS = new ArrayList<>();
     private static final List<Pending> PENDING = new ArrayList<>();
 
@@ -108,8 +123,27 @@ public class VoidBlasts {
         return !state.isAir() && state.getDestroySpeed(level, pos) < 0.0F;
     }
 
+    /** Items and XP that came out of a kill must not be wiped by the blast that is still running. */
+    private static boolean isProtectedLoot(Entity e) {
+        if (!(e instanceof ItemEntity) && !(e instanceof ExperienceOrb)) {
+            return false;
+        }
+        if (!(e.level() instanceof ServerLevel level)) {
+            return false;
+        }
+        long now = level.getGameTime();
+        KILLS.removeIf(k -> k.until < now);
+        for (Kill k : KILLS) {
+            if (k.level == level && k.pos.distanceToSqr(e.position()) <= LOOT_PROTECT_RANGE * LOOT_PROTECT_RANGE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static boolean canErase(Entity e, UUID owner) {
-        return !(e instanceof VoidOrbEntity)
+        return !isProtectedLoot(e)
+                &&  !(e instanceof VoidOrbEntity)
                 && !(e instanceof VoidSphereEntity)
                 && !(e instanceof LaserBeamEntity)
                 && !(e instanceof EnderDragonPart)
@@ -128,7 +162,7 @@ public class VoidBlasts {
             if (!player.isCreative() && !player.isSpectator()) {
                 player.hurt(level.damageSources().genericKill(), Float.MAX_VALUE);
             }
-        } else if (e instanceof LivingEntity mob && mob.getMaxHealth() >= KILL_HEALTH) {
+        } else if (e instanceof LivingEntity mob && (mob.getMaxHealth() >= KILL_HEALTH || mob.getType().is(KILL_NOT_DELETE))) {
             killWithLoot(level, mob, owner);
         } else {
             e.discard();
@@ -144,6 +178,7 @@ public class VoidBlasts {
         DamageSource source = killer != null
                 ? level.damageSources().playerAttack(killer)
                 : level.damageSources().genericKill();
+        KILLS.add(new Kill(level, mob.position(), level.getGameTime() + LOOT_PROTECT_TICKS));
         mob.setInvulnerable(false);
         mob.invulnerableTime = 0;
         mob.hurt(source, Float.MAX_VALUE);

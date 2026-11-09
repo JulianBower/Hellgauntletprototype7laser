@@ -2,6 +2,7 @@ package com.hellgauntlet;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
@@ -17,6 +18,9 @@ public class LaserBeamRenderer extends EntityRenderer<LaserBeamEntity> {
     private static final ResourceLocation TEXTURE =
             ResourceLocation.fromNamespaceAndPath(HellGauntletMod.MODID, "textures/entity/void_sphere.png");
     private static final int SIDES = 8;
+    /** Beam is hidden within this many blocks of the camera along it (and while the camera is this close to its axis). */
+    private static final double CLEAR_RADIUS = 1.5;
+    private static final double CLEAR_LENGTH = 3.0;
 
     public LaserBeamRenderer(EntityRendererProvider.Context context) {
         super(context);
@@ -43,6 +47,16 @@ public class LaserBeamRenderer extends EntityRenderer<LaserBeamEntity> {
             if (fadeStart >= 0 && age > fadeStart) {
                 opacity = 1.0F - (age - fadeStart) / LaserBeamEntity.FADE_TICKS;
             }
+        }
+        // Don't draw the part of the beam right around the camera, or the black tube fills the screen
+        // when you shoot it yourself (first person) or stand close to it.
+        Vec3 camRel = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition()
+                .subtract(entity.getPosition(partialTick));
+        Vec3 look = entity.getLookAngle();
+        double along = camRel.dot(look);
+        double sideways = camRel.subtract(look.scale(along)).length();
+        if (sideways < CLEAR_RADIUS && along > -CLEAR_LENGTH) {
+            tail = (float) Math.max(tail, along + CLEAR_LENGTH);
         }
         if (length - tail <= 0.0F) {
             return;
